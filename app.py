@@ -84,11 +84,11 @@ def get_user_id():
 # DADOS
 # =============================
 def carregar_dados():
-    res = supabase.table("usuarios").select("*").eq("id", get_user_id()).execute()
+    res = supabase.table("usuarios").select("*").eq("user_id", get_user_id()).execute()
 
     if not res.data:
         dados = {
-            "id": get_user_id(),
+            "user_id": get_user_id(),
             "saldo": 0,
             "historico": [],
             "metas": [],
@@ -110,7 +110,7 @@ def carregar_dados():
     return dados
 
 def salvar_dados(dados):
-    supabase.table("usuarios").update(dados).eq("id", get_user_id()).execute()
+    supabase.table("usuarios").update(dados).eq("user_id", get_user_id()).execute()
 
 dados = carregar_dados()
 
