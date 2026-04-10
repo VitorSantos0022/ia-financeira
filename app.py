@@ -58,9 +58,12 @@ def tela_login():
     try:
         supabase.auth.sign_up({
             "email": email,
-            "password": senha
+            "password": senha,
+            "options": {
+                "email_redirect_to": "https://ia-financeira-hcpjnmqrierowuvyu9upy3.streamlit.app/"
+            }
         })
-        st.success("Conta criada!")
+        st.success("Conta criada! Verifique seu e-mail.")
     except:
         st.error("Erro ao cadastrar")
 
