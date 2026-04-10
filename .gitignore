@@ -1,0 +1,5 @@
+dados.json
+*.png
+*.pkl
+*.pdf
+__pycache__/
