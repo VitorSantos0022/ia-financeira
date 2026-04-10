@@ -93,7 +93,7 @@ def carregar_dados():
 
     if not res.data:
         dados = {
-            "id": get_user_id(),
+            "id": str(get_user_id()),  # 🔥 CORREÇÃO AQUI
             "saldo": 0,
             "historico": [],
             "metas": [],
@@ -105,7 +105,7 @@ def carregar_dados():
     return res.data[0]
 
 def salvar_dados(dados):
-    supabase.table("usuarios").update(dados).eq("id", get_user_id()).execute()
+    supabase.table("usuarios").update(dados).eq("id", str(get_user_id())).execute()
 
 # 🔽 AGORA SIM (CORRETO)
 dados = carregar_dados()
