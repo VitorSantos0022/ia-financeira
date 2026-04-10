@@ -95,9 +95,10 @@ def carregar_dados():
         dados = {
             "id": str(get_user_id()),  # 🔥 CORREÇÃO AQUI
             "saldo": 0,
-            "historico": [],
-            "metas": [],
-            "aprendizado": {}
+            import json
+            "historico": json.dumps([]),
+            "metas": json.dumps([]),
+            "aprendizado": json.dumps({})
         }
         supabase.table("usuarios").insert(dados).execute()
         return dados
@@ -109,6 +110,12 @@ def salvar_dados(dados):
 
 # 🔽 AGORA SIM (CORRETO)
 dados = carregar_dados()
+
+import json
+
+dados["historico"] = json.loads(dados["historico"])
+dados["metas"] = json.loads(dados["metas"])
+dados["aprendizado"] = json.loads(dados["aprendizado"])
 
 # =============================
 # CONFIG VISUAL
