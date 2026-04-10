@@ -4,3 +4,4 @@ matplotlib
 reportlab
 pandas
 numpy
+supabase
