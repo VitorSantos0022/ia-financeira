@@ -16,6 +16,11 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 
 # =============================
+# CONFIG VISUAL (MOVIDO PRA CIMA)
+# =============================
+st.set_page_config(page_title="IA Financeira", layout="wide")
+
+# =============================
 # SUPABASE CONFIG
 # =============================
 from supabase import create_client, Client
@@ -25,9 +30,6 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
-
-# =============================
 # =============================
 # LOGIN SUPABASE
 # =============================
@@ -48,17 +50,16 @@ def tela_login():
                 "email": email,
                 "password": senha
             })
-    
+
             if res.user:
                 st.session_state.user = res.user
                 st.success("Login realizado!")
                 st.rerun()
             else:
                 st.error("Erro no login")
-    
-        except Exception as e:
+
+        except:
             st.error("Erro no login")
-        
 
     if col2.button("Cadastrar"):
         try:
@@ -76,12 +77,19 @@ def tela_login():
 if not st.session_state.user:
     tela_login()
     st.stop()
-    
-# 🔽 FUNÇÕES DE DADOS
+
+# =============================
+# 🔥 FUNÇÕES DE USUÁRIO (CORRIGIDO)
+# =============================
+def get_user_id():
+    return st.session_state.user.id
+
+# =============================
+# 🔥 DADOS SUPABASE (UNIFICADO)
+# =============================
 def carregar_dados():
     res = supabase.table("usuarios").select("*").eq("id", get_user_id()).execute()
 
-    # 🔥 SE NÃO EXISTIR USUÁRIO NO BANCO
     if not res.data:
         dados = {
             "id": get_user_id(),
@@ -90,27 +98,20 @@ def carregar_dados():
             "metas": [],
             "aprendizado": {}
         }
-
         supabase.table("usuarios").insert(dados).execute()
         return dados
 
-    # 🔥 SE EXISTIR
     return res.data[0]
 
 def salvar_dados(dados):
-    ...
+    supabase.table("usuarios").update(dados).eq("id", get_user_id()).execute()
 
-def get_user_id():
-    return st.session_state.user.id
-    
-# 🔽 SÓ AQUI CHAMA
+# 🔽 AGORA SIM (CORRETO)
 dados = carregar_dados()
 
 # =============================
 # CONFIG VISUAL
 # =============================
-st.set_page_config(page_title="IA Financeira", layout="wide")
-
 st.markdown("""
     <style>
     body {background-color: #0e1117; color: white;}
@@ -160,34 +161,7 @@ def carregar_modelo():
 modelo, vectorizer = carregar_modelo()
 
 # =============================
-# =============================
-# DADOS SUPABASE
-# =============================
-def get_user_id():
-    return st.session_state.user.id
-
-def carregar_dados():
-    res = supabase.table("usuarios").select("*").eq("id", get_user_id()).execute()
-
-    if res.data:
-        return res.data[0]
-    else:
-        dados = {
-            "id": get_user_id(),
-            "saldo": 0,
-            "historico": [],
-            "metas": [],
-            "aprendizado": {}
-        }
-        supabase.table("usuarios").insert(dados).execute()
-        return dados
-
-def salvar_dados(dados):
-    supabase.table("usuarios").update(dados).eq("id", get_user_id()).execute()
-
-
-# =============================
-# SIDEBAR (USUÁRIO)
+# SIDEBAR
 # =============================
 if st.sidebar.button("Sair"):
     st.session_state.user = None
@@ -281,7 +255,7 @@ if st.button("Ensinar IA"):
         st.success("IA aprendeu!")
 
 # =============================
-# RESET POR USUÁRIO
+# RESET
 # =============================
 st.subheader("⚠️ Zona de Perigo")
 
@@ -320,7 +294,7 @@ st.subheader("💵 Saldo Atual")
 st.metric("Saldo", f"R$ {dados['saldo']}")
 
 # =============================
-# GRÁFICOS
+# GRÁFICO
 # =============================
 categorias = {}
 for item in dados["historico"]:
