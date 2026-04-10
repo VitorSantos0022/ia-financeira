@@ -7,12 +7,65 @@ import json
 import re
 import pickle
 import os
+import hashlib
 from datetime import datetime
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 import matplotlib.pyplot as plt
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
+
+# =============================
+# LOGIN + MULTIUSUÁRIO
+# =============================
+def hash_senha(senha):
+    return hashlib.sha256(senha.encode()).hexdigest()
+
+def carregar_usuarios():
+    try:
+        with open("usuarios.json", "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def salvar_usuarios(usuarios):
+    with open("usuarios.json", "w") as f:
+        json.dump(usuarios, f, indent=4)
+
+usuarios = carregar_usuarios()
+
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+    st.session_state.usuario = None
+
+def tela_login():
+    st.title("🔐 Login / Cadastro")
+
+    email = st.text_input("E-mail")
+    senha = st.text_input("Senha", type="password")
+
+    col1, col2 = st.columns(2)
+
+    if col1.button("Entrar"):
+        if email in usuarios and usuarios[email] == hash_senha(senha):
+            st.session_state.logado = True
+            st.session_state.usuario = email
+            st.success("Login realizado!")
+            st.rerun()
+        else:
+            st.error("Usuário ou senha inválidos")
+
+    if col2.button("Cadastrar"):
+        if email and senha:
+            usuarios[email] = hash_senha(senha)
+            salvar_usuarios(usuarios)
+            st.success("Usuário cadastrado! Agora faça login.")
+        else:
+            st.error("Preencha os campos")
+
+if not st.session_state.logado:
+    tela_login()
+    st.stop()
 
 # =============================
 # CONFIG VISUAL
@@ -56,7 +109,6 @@ def treinar_modelo():
     with open("modelo.pkl", "wb") as f:
         pickle.dump((modelo, vectorizer), f)
 
-
 def carregar_modelo():
     try:
         with open("modelo.pkl", "rb") as f:
@@ -69,11 +121,14 @@ def carregar_modelo():
 modelo, vectorizer = carregar_modelo()
 
 # =============================
-# DADOS
+# DADOS POR USUÁRIO
 # =============================
+def arquivo_usuario():
+    return f"dados_{st.session_state.usuario}.json"
+
 def carregar_dados():
     try:
-        with open("dados.json", "r") as f:
+        with open(arquivo_usuario(), "r") as f:
             dados = json.load(f)
     except:
         dados = {}
@@ -89,19 +144,26 @@ def carregar_dados():
 
     return dados
 
-
 def salvar_dados(dados):
-    with open("dados.json", "w") as f:
+    with open(arquivo_usuario(), "w") as f:
         json.dump(dados, f, indent=4)
 
-
 dados = carregar_dados()
+
+# =============================
+# SIDEBAR (USUÁRIO)
+# =============================
+st.sidebar.write(f"👤 {st.session_state.usuario}")
+
+if st.sidebar.button("Sair"):
+    st.session_state.logado = False
+    st.session_state.usuario = None
+    st.rerun()
 
 # =============================
 # IA
 # =============================
 def prever_categoria(texto):
-
     if "lanche" in texto or "comida" in texto:
         return "alimentacao"
     if "uber" in texto or "transporte" in texto:
@@ -115,8 +177,6 @@ def prever_categoria(texto):
     X = vectorizer.transform([texto])
     return modelo.predict(X)[0]
 
-
-# 🔥 MELHORADO (aceita decimais)
 def extrair_valor(texto):
     numeros = re.findall(r"\d+(?:\.\d+)?", texto)
     return float(numeros[0]) if numeros else 0
@@ -133,12 +193,6 @@ def processar_entrada():
     texto = st.session_state.entrada.lower()
     valor = extrair_valor(texto)
     categoria = prever_categoria(texto)
-
-    if "deletar gasto" in texto:
-        for item in reversed(dados["historico"]):
-            if item["categoria"] in texto:
-                st.session_state["confirmar_delete"] = item
-                return
 
     if "gastei" in texto or "paguei" in texto:
         dados["saldo"] -= valor
@@ -166,9 +220,6 @@ def processar_entrada():
 
     st.session_state.entrada = ""
 
-# =============================
-# FORMULÁRIO
-# =============================
 with st.form("form_entrada"):
     st.text_input("Digite (ex: gastei 50 com lanche)", key="entrada")
     st.form_submit_button("Registrar", on_click=processar_entrada)
@@ -190,28 +241,25 @@ with col2:
         key="ensinar_categoria"
     )
 
-if st.button("Ensinar IA", key="btn_ensinar"):
+if st.button("Ensinar IA"):
     if texto_ensinar and categoria_ensinar:
         dados["aprendizado"][texto_ensinar.lower()] = categoria_ensinar
         salvar_dados(dados)
-        st.success("IA aprendeu com sucesso!")
+        st.success("IA aprendeu!")
 
 # =============================
-# CONFIRMAR DELETE
+# RESET POR USUÁRIO
 # =============================
-if "confirmar_delete" in st.session_state:
-    item = st.session_state["confirmar_delete"]
-    st.warning(f"Deseja deletar: {item['texto']} - R$ {item['valor']}?")
+st.subheader("⚠️ Zona de Perigo")
 
-    col1, col2 = st.columns(2)
-    if col1.button("✅ Confirmar"):
-        dados["historico"].remove(item)
-        salvar_dados(dados)
-        del st.session_state["confirmar_delete"]
-        st.success("Deletado com sucesso")
-
-    if col2.button("❌ Cancelar"):
-        del st.session_state["confirmar_delete"]
+if st.button("🧹 Limpar Tudo"):
+    dados["saldo"] = 0
+    dados["historico"] = []
+    dados["metas"] = []
+    dados["aprendizado"] = {}
+    salvar_dados(dados)
+    st.success("Dados zerados!")
+    st.rerun()
 
 # =============================
 # METAS
@@ -256,67 +304,19 @@ if categorias:
 # PDF
 # =============================
 def gerar_pdf():
-    from reportlab.platypus import Table, TableStyle
-    from reportlab.lib import colors
-
     doc = SimpleDocTemplate("relatorio.pdf")
     styles = getSampleStyleSheet()
     elementos = []
 
     elementos.append(Paragraph("Relatório Financeiro", styles['Title']))
     elementos.append(Spacer(1, 12))
-
     elementos.append(Paragraph(f"Saldo: R$ {dados['saldo']}", styles['Normal']))
     elementos.append(Spacer(1, 12))
 
-    elementos.append(Paragraph("Metas:", styles['Heading2']))
-    elementos.append(Spacer(1, 10))
-
-    if dados["metas"]:
-        for m in dados["metas"]:
-            elementos.append(Paragraph(f"{m['nome']} - R$ {m['valor']}", styles['Normal']))
-    else:
-        elementos.append(Paragraph("Nenhuma meta cadastrada", styles['Normal']))
-
-    elementos.append(Spacer(1, 20))
-
-    elementos.append(Paragraph("Histórico:", styles['Heading2']))
-    elementos.append(Spacer(1, 10))
-
-    if dados["historico"]:
-        tabela_dados = [["Data", "Descrição", "Valor"]]
-
-        for item in dados["historico"]:
-            tabela_dados.append([
-                item["data"],
-                item["texto"],
-                f"R$ {item['valor']}"
-            ])
-
-        tabela = Table(tabela_dados)
-
-        tabela.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.grey),
-            ('TEXTCOLOR',(0,0),(-1,0),colors.white),
-            ('GRID', (0,0), (-1,-1), 1, colors.black),
-        ]))
-
-        elementos.append(tabela)
-    else:
-        elementos.append(Paragraph("Nenhum registro encontrado", styles['Normal']))
-
-    elementos.append(Spacer(1, 20))
-
-    elementos.append(Paragraph("Resumo de Gastos:", styles['Heading2']))
-    elementos.append(Spacer(1, 10))
-
     if os.path.exists("grafico.png"):
         elementos.append(Image("grafico.png", width=300, height=200))
-    else:
-        elementos.append(Paragraph("Gráfico não disponível", styles['Normal']))
 
     doc.build(elementos)
-
 
 if st.button("📄 Gerar PDF"):
     gerar_pdf()
