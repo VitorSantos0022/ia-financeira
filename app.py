@@ -50,16 +50,17 @@ def tela_login():
                 "email": email,
                 "password": senha
             })
-
-            if res.user:
+    
+            if res and res.user:
                 st.session_state.user = res.user
                 st.success("Login realizado!")
-                st.rerun()
+                st.stop()  # 🔥 TROQUEI AQUI
             else:
                 st.error("Erro no login")
 
-        except:
+        except Exception as e:
             st.error("Erro no login")
+
 
     if col2.button("Cadastrar"):
         try:
