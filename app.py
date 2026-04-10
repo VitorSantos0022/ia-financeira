@@ -48,11 +48,17 @@ def tela_login():
                 "email": email,
                 "password": senha
             })
-            st.session_state.user = res.user
-            st.success("Login realizado!")
-            st.rerun()
-        except:
+    
+            if res.user:
+                st.session_state.user = res.user
+                st.success("Login realizado!")
+                st.rerun()
+            else:
+                st.error("Erro no login")
+    
+        except Exception as e:
             st.error("Erro no login")
+        
 
     if col2.button("Cadastrar"):
         try:
@@ -70,6 +76,9 @@ def tela_login():
 if not st.session_state.user:
     tela_login()
     st.stop()
+    
+# 👇 AQUI (logo depois do login)
+dados = carregar_dados()
 
 # =============================
 # CONFIG VISUAL
