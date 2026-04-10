@@ -77,7 +77,14 @@ if not st.session_state.user:
     tela_login()
     st.stop()
     
-# 👇 AQUI (logo depois do login)
+# 🔽 FUNÇÕES DE DADOS
+def carregar_dados():
+    ...
+
+def salvar_dados(dados):
+    ...
+
+# 🔽 SÓ AQUI CHAMA
 dados = carregar_dados()
 
 # =============================
