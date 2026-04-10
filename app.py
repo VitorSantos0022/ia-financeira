@@ -79,7 +79,23 @@ if not st.session_state.user:
     
 # 🔽 FUNÇÕES DE DADOS
 def carregar_dados():
-    ...
+    res = supabase.table("usuarios").select("*").eq("id", get_user_id()).execute()
+
+    # 🔥 SE NÃO EXISTIR USUÁRIO NO BANCO
+    if not res.data:
+        dados = {
+            "id": get_user_id(),
+            "saldo": 0,
+            "historico": [],
+            "metas": [],
+            "aprendizado": {}
+        }
+
+        supabase.table("usuarios").insert(dados).execute()
+        return dados
+
+    # 🔥 SE EXISTIR
+    return res.data[0]
 
 def salvar_dados(dados):
     ...
