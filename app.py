@@ -55,14 +55,14 @@ def tela_login():
             st.error("Erro no login")
 
     if col2.button("Cadastrar"):
-        try:
-            supabase.auth.sign_up({
-                "email": email,
-                "password": senha
-            })
-            st.success("Conta criada!")
-        except:
-            st.error("Erro ao cadastrar")
+    try:
+        supabase.auth.sign_up({
+            "email": email,
+            "password": senha
+        })
+        st.success("Conta criada!")
+    except:
+        st.error("Erro ao cadastrar")
 
 if not st.session_state.user:
     tela_login()
