@@ -100,6 +100,9 @@ def carregar_dados():
 def salvar_dados(dados):
     ...
 
+def get_user_id():
+    return st.session_state.user.id
+    
 # 🔽 SÓ AQUI CHAMA
 dados = carregar_dados()
 
