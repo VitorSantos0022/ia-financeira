@@ -55,17 +55,17 @@ def tela_login():
             st.error("Erro no login")
 
     if col2.button("Cadastrar"):
-    try:
-        supabase.auth.sign_up({
-            "email": email,
-            "password": senha,
-            "options": {
-                "email_redirect_to": "https://ia-financeira-hcpjnmqrierowuvyu9upy3.streamlit.app/"
-            }
-        })
-        st.success("Conta criada! Verifique seu e-mail.")
-    except:
-        st.error("Erro ao cadastrar")
+        try:
+            supabase.auth.sign_up({
+                "email": email,
+                "password": senha,
+                "options": {
+                    "email_redirect_to": "https://ia-financeira-hcpjnmqrierowuvyu9upy3.streamlit.app/"
+                }
+            })
+            st.success("Conta criada! Verifique seu e-mail.")
+        except:
+            st.error("Erro ao cadastrar")
 
 if not st.session_state.user:
     tela_login()
