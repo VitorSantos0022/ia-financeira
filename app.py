@@ -16,30 +16,26 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 
 # =============================
-# LOGIN + MULTIUSUÁRIO
+# SUPABASE CONFIG
 # =============================
-def hash_senha(senha):
-    return hashlib.sha256(senha.encode()).hexdigest()
+from supabase import create_client, Client
 
-def carregar_usuarios():
-    try:
-        with open("usuarios.json", "r") as f:
-            return json.load(f)
-    except:
-        return {}
+SUPABASE_URL = st.secrets["https://icnfeubpyfwdgailawuw.supabase.co"]
+SUPABASE_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljbmZldWJweWZ3ZGdhaWxhd3V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NzQyMjcsImV4cCI6MjA5MTM1MDIyN30.E5QcV7Wj3kBAUn6GBv3xcKuomVft9zz5MrljCgBNbPw"]
 
-def salvar_usuarios(usuarios):
-    with open("usuarios.json", "w") as f:
-        json.dump(usuarios, f, indent=4)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-usuarios = carregar_usuarios()
 
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-    st.session_state.usuario = None
+
+# =============================
+# =============================
+# LOGIN SUPABASE
+# =============================
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 def tela_login():
-    st.title("🔐 Login / Cadastro")
+    st.title("🔐 Login")
 
     email = st.text_input("E-mail")
     senha = st.text_input("Senha", type="password")
@@ -47,23 +43,28 @@ def tela_login():
     col1, col2 = st.columns(2)
 
     if col1.button("Entrar"):
-        if email in usuarios and usuarios[email] == hash_senha(senha):
-            st.session_state.logado = True
-            st.session_state.usuario = email
+        try:
+            res = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": senha
+            })
+            st.session_state.user = res.user
             st.success("Login realizado!")
             st.rerun()
-        else:
-            st.error("Usuário ou senha inválidos")
+        except:
+            st.error("Erro no login")
 
     if col2.button("Cadastrar"):
-        if email and senha:
-            usuarios[email] = hash_senha(senha)
-            salvar_usuarios(usuarios)
-            st.success("Usuário cadastrado! Agora faça login.")
-        else:
-            st.error("Preencha os campos")
+        try:
+            supabase.auth.sign_up({
+                "email": email,
+                "password": senha
+            })
+            st.success("Conta criada!")
+        except:
+            st.error("Erro ao cadastrar")
 
-if not st.session_state.logado:
+if not st.session_state.user:
     tela_login()
     st.stop()
 
@@ -121,43 +122,37 @@ def carregar_modelo():
 modelo, vectorizer = carregar_modelo()
 
 # =============================
-# DADOS POR USUÁRIO
 # =============================
-def arquivo_usuario():
-    return f"dados_{st.session_state.usuario}.json"
+# DADOS SUPABASE
+# =============================
+def get_user_id():
+    return st.session_state.user.id
 
 def carregar_dados():
-    try:
-        with open(arquivo_usuario(), "r") as f:
-            dados = json.load(f)
-    except:
-        dados = {}
+    res = supabase.table("usuarios").select("*").eq("id", get_user_id()).execute()
 
-    if "saldo" not in dados:
-        dados["saldo"] = 0
-    if "historico" not in dados:
-        dados["historico"] = []
-    if "metas" not in dados:
-        dados["metas"] = []
-    if "aprendizado" not in dados:
-        dados["aprendizado"] = {}
-
-    return dados
+    if res.data:
+        return res.data[0]
+    else:
+        dados = {
+            "id": get_user_id(),
+            "saldo": 0,
+            "historico": [],
+            "metas": [],
+            "aprendizado": {}
+        }
+        supabase.table("usuarios").insert(dados).execute()
+        return dados
 
 def salvar_dados(dados):
-    with open(arquivo_usuario(), "w") as f:
-        json.dump(dados, f, indent=4)
+    supabase.table("usuarios").update(dados).eq("id", get_user_id()).execute()
 
-dados = carregar_dados()
 
 # =============================
 # SIDEBAR (USUÁRIO)
 # =============================
-st.sidebar.write(f"👤 {st.session_state.usuario}")
-
 if st.sidebar.button("Sair"):
-    st.session_state.logado = False
-    st.session_state.usuario = None
+    st.session_state.user = None
     st.rerun()
 
 # =============================
