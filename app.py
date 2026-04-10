@@ -20,8 +20,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 # =============================
 from supabase import create_client, Client
 
-SUPABASE_URL = st.secrets["https://icnfeubpyfwdgailawuw.supabase.co"]
-SUPABASE_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljbmZldWJweWZ3ZGdhaWxhd3V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NzQyMjcsImV4cCI6MjA5MTM1MDIyN30.E5QcV7Wj3kBAUn6GBv3xcKuomVft9zz5MrljCgBNbPw"]
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
