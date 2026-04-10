@@ -6,6 +6,7 @@ import streamlit as st
 import json
 import re
 import pickle
+import os
 from datetime import datetime
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
@@ -101,7 +102,6 @@ dados = carregar_dados()
 # =============================
 def prever_categoria(texto):
 
-    # REGRAS INTELIGENTES (antes da IA)
     if "lanche" in texto or "comida" in texto:
         return "alimentacao"
     if "uber" in texto or "transporte" in texto:
@@ -109,7 +109,6 @@ def prever_categoria(texto):
     if "salario" in texto or "ganhei" in texto or "recebi" in texto:
         return "receita"
 
-    # IA (fallback)
     if texto in dados["aprendizado"]:
         return dados["aprendizado"][texto]
 
@@ -117,8 +116,9 @@ def prever_categoria(texto):
     return modelo.predict(X)[0]
 
 
+# 🔥 MELHORADO (aceita decimais)
 def extrair_valor(texto):
-    numeros = re.findall(r"\d+", texto)
+    numeros = re.findall(r"\d+(?:\.\d+)?", texto)
     return float(numeros[0]) if numeros else 0
 
 # =============================
@@ -134,7 +134,6 @@ def processar_entrada():
     valor = extrair_valor(texto)
     categoria = prever_categoria(texto)
 
-    # DELETE COM CONFIRMAÇÃO
     if "deletar gasto" in texto:
         for item in reversed(dados["historico"]):
             if item["categoria"] in texto:
@@ -168,14 +167,14 @@ def processar_entrada():
     st.session_state.entrada = ""
 
 # =============================
-# FORMULÁRIO (CORRETO)
+# FORMULÁRIO
 # =============================
 with st.form("form_entrada"):
     st.text_input("Digite (ex: gastei 50 com lanche)", key="entrada")
     st.form_submit_button("Registrar", on_click=processar_entrada)
 
 # =============================
-# ENSINAR IA (FORA DO FORM)
+# ENSINAR IA
 # =============================
 st.subheader("🧠 Ensinar IA")
 
@@ -196,9 +195,6 @@ if st.button("Ensinar IA", key="btn_ensinar"):
         dados["aprendizado"][texto_ensinar.lower()] = categoria_ensinar
         salvar_dados(dados)
         st.success("IA aprendeu com sucesso!")
-
-    st.text_input("Digite (ex: gastei 50 com lanche)", key="entrada")
-    st.form_submit_button("Registrar", on_click=processar_entrada)
 
 # =============================
 # CONFIRMAR DELETE
@@ -267,15 +263,12 @@ def gerar_pdf():
     styles = getSampleStyleSheet()
     elementos = []
 
-    # TÍTULO
     elementos.append(Paragraph("Relatório Financeiro", styles['Title']))
     elementos.append(Spacer(1, 12))
 
-    # SALDO
     elementos.append(Paragraph(f"Saldo: R$ {dados['saldo']}", styles['Normal']))
     elementos.append(Spacer(1, 12))
 
-    # METAS
     elementos.append(Paragraph("Metas:", styles['Heading2']))
     elementos.append(Spacer(1, 10))
 
@@ -287,7 +280,6 @@ def gerar_pdf():
 
     elementos.append(Spacer(1, 20))
 
-    # HISTÓRICO EM TABELA
     elementos.append(Paragraph("Histórico:", styles['Heading2']))
     elementos.append(Spacer(1, 10))
 
@@ -315,15 +307,14 @@ def gerar_pdf():
 
     elementos.append(Spacer(1, 20))
 
-    # GRÁFICO
-    try:
-        elementos.append(Paragraph("Resumo de Gastos:", styles['Heading2']))
-        elementos.append(Spacer(1, 10))
+    elementos.append(Paragraph("Resumo de Gastos:", styles['Heading2']))
+    elementos.append(Spacer(1, 10))
+
+    if os.path.exists("grafico.png"):
         elementos.append(Image("grafico.png", width=300, height=200))
-    except:
+    else:
         elementos.append(Paragraph("Gráfico não disponível", styles['Normal']))
 
-    # FINAL
     doc.build(elementos)
 
 
@@ -331,7 +322,6 @@ if st.button("📄 Gerar PDF"):
     gerar_pdf()
     with open("relatorio.pdf", "rb") as f:
         st.download_button("Baixar PDF", f, file_name="relatorio.pdf")
-
 
 # =============================
 # HISTÓRICO
