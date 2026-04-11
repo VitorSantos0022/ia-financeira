@@ -1,13 +1,13 @@
 # =============================
-# IA FINANCEIRA PRO - COMPLETO
+# IA FINANCEIRA PRO - FINAL ESTÁVEL
 # =============================
 
 import streamlit as st
 import re
 from datetime import datetime
 from collections import defaultdict
-import matplotlib.pyplot as plt
 from io import BytesIO
+import matplotlib.pyplot as plt
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -62,7 +62,7 @@ def tela_login():
                 "email": email,
                 "password": senha
             })
-            st.success("Conta criada! Verifique seu e-mail.")
+            st.success("Conta criada!")
         except Exception as e:
             st.error(f"Erro ao cadastrar: {e}")
 
@@ -71,13 +71,11 @@ if not st.session_state.user:
     tela_login()
     st.stop()
 
-
 # =============================
-# USER ID
+# USER
 # =============================
 def get_user_id():
     return str(st.session_state.user.id)
-
 
 # =============================
 # CARREGAR DADOS
@@ -98,10 +96,25 @@ def carregar_dados():
 
     dados = res.data[0]
 
+    # 🔥 BLINDAGEM TOTAL
     dados["saldo"] = float(dados.get("saldo") or 0)
     dados["historico"] = dados.get("historico") or []
-    dados["metas"] = dados.get("metas") or []
     dados["aprendizado"] = dados.get("aprendizado") or {}
+
+    # 🔥 CORREÇÃO DE METAS (EVITA ERROS)
+    metas_limpa = []
+    for m in (dados.get("metas") or []):
+        if isinstance(m, dict):
+            metas_limpa.append({
+                "nome": m.get("nome", "Meta"),
+                "valor": float(m.get("valor") or 0),
+                "valor_atual": float(m.get("valor_atual") or 0)
+            })
+
+    dados["metas"] = metas_limpa
+
+    # limpar histórico inválido
+    dados["historico"] = [i for i in dados["historico"] if isinstance(i, dict)]
 
     return dados
 
@@ -111,7 +124,6 @@ def salvar_dados(dados):
 
 
 dados = carregar_dados()
-
 
 # =============================
 # IA SIMPLES
@@ -133,7 +145,6 @@ def extrair_valor(texto):
     numeros = re.findall(r"\d+(?:\.\d+)?", texto)
     return float(numeros[0]) if numeros else 0.0
 
-
 # =============================
 # PROCESSAR ENTRADA
 # =============================
@@ -147,47 +158,39 @@ def processar_entrada():
 
     if "gastei" in texto or "paguei" in texto:
         dados["saldo"] -= valor
-
-        dados["historico"].append({
-            "texto": texto,
-            "valor": valor,
-            "categoria": categoria,
-            "tipo": "despesa",
-            "mes": mes,
-            "ano": ano
-        })
-
+        tipo = "despesa"
     elif "ganhei" in texto or "recebi" in texto:
         dados["saldo"] += valor
+        tipo = "receita"
+    else:
+        tipo = "outros"
 
-        dados["historico"].append({
-            "texto": texto,
-            "valor": valor,
-            "categoria": categoria,
-            "tipo": "receita",
-            "mes": mes,
-            "ano": ano
-        })
+    dados["historico"].append({
+        "texto": texto,
+        "valor": valor,
+        "categoria": categoria,
+        "tipo": tipo,
+        "mes": mes,
+        "ano": ano
+    })
 
     # metas automáticas
     for meta in dados["metas"]:
-        meta["valor_atual"] = meta.get("valor_atual", 0)
-        if categoria == "receita":
-            meta["valor_atual"] += valor
+        if tipo == "receita":
+            meta["valor_atual"] = meta.get("valor_atual", 0) + valor
 
     salvar_dados(dados)
     st.success("Registro salvo!")
 
 
 # =============================
-# UI PRINCIPAL
+# UI
 # =============================
 st.title("💰 IA Financeira PRO")
 
 with st.form("form"):
     st.text_input("Digite (ex: gastei 50 com lanche)", key="entrada")
     st.form_submit_button("Registrar", on_click=processar_entrada)
-
 
 # =============================
 # METAS
@@ -200,19 +203,21 @@ valor_meta = st.number_input("Valor da meta", min_value=0.0)
 if st.button("Criar Meta"):
     dados["metas"].append({
         "nome": nome,
-        "valor": valor_meta,
-        "valor_atual": 0
+        "valor": float(valor_meta),
+        "valor_atual": 0.0
     })
     salvar_dados(dados)
     st.success("Meta criada!")
 
 for meta in dados["metas"]:
-    progresso = meta.get("valor_atual", 0) / meta["valor"] if meta["valor"] > 0 else 0
+    valor_meta = float(meta.get("valor") or 0)
+    valor_atual = float(meta.get("valor_atual") or 0)
+
+    progresso = (valor_atual / valor_meta) if valor_meta > 0 else 0
 
     st.write(f"📌 {meta['nome']}")
     st.progress(min(progresso, 1.0))
-    st.write(f"{meta.get('valor_atual',0)} / {meta['valor']}")
-
+    st.write(f"{valor_atual} / {valor_meta}")
 
 # =============================
 # DASHBOARD
@@ -223,10 +228,11 @@ despesas = defaultdict(float)
 receitas = defaultdict(float)
 
 for i in dados["historico"]:
+    mes = i.get("mes")
     if i["tipo"] == "despesa":
-        despesas[i["mes"]] += i["valor"]
-    else:
-        receitas[i["mes"]] += i["valor"]
+        despesas[mes] += i["valor"]
+    elif i["tipo"] == "receita":
+        receitas[mes] += i["valor"]
 
 meses = sorted(set(list(despesas.keys()) + list(receitas.keys())))
 
@@ -237,21 +243,19 @@ if meses:
     ax.legend()
     st.pyplot(fig)
 
-
 # =============================
 # HISTÓRICO
 # =============================
 st.subheader("📜 Histórico")
 
-filtro = st.selectbox("Filtrar mês", ["Todos"] + sorted(set(i["mes"] for i in dados["historico"])))
+filtro = st.selectbox("Filtrar mês", ["Todos"] + sorted(set(i["mes"] for i in dados["historico"] if "mes" in i)))
 
 for i in dados["historico"]:
-    if filtro == "Todos" or i["mes"] == filtro:
+    if filtro == "Todos" or i.get("mes") == filtro:
         st.write(i)
 
-
 # =============================
-# PDF EXPORT (FUNCIONANDO)
+# PDF
 # =============================
 st.subheader("📄 Exportar PDF")
 
