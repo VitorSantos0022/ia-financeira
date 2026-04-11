@@ -1,5 +1,5 @@
 # =============================
-# IA FINANCEIRA WEB APP (COMPLETO)
+# IA FINANCEIRA WEB APP (NÍVEL PROFISSIONAL)
 # =============================
 
 import streamlit as st
@@ -50,9 +50,9 @@ def tela_login():
             if res and res.user:
                 st.session_state.user = res.user
                 st.success("Login realizado!")
-                st.rerun()
+                st.rerun()  # ✅ CORREÇÃO
             else:
-                st.error("Erro no login")
+                st.error("E-mail ou senha inválidos")
 
         except:
             st.error("Erro no login")
@@ -115,6 +115,14 @@ def salvar_dados(dados):
     supabase.table("usuarios").update(dados).eq("user_id", get_user_id()).execute()
 
 dados = carregar_dados()
+
+# =============================
+# 🔥 LIMPEZA DE DADOS (CORREÇÃO)
+# =============================
+if isinstance(dados.get("historico"), list):
+    dados["historico"] = [i for i in dados["historico"] if isinstance(i, dict)]
+else:
+    dados["historico"] = []
 
 # =============================
 # STYLE
@@ -264,15 +272,20 @@ st.subheader("💵 Saldo Atual")
 st.metric("Saldo", f"R$ {dados['saldo']}")
 
 # =============================
-# GRÁFICO
+# GRÁFICO (CORRIGIDO)
 # =============================
 st.subheader("📊 Gastos por Categoria")
 
 categorias = {}
 
 for item in dados["historico"]:
-    if item["tipo"] == "despesa":
-        categorias[item["categoria"]] = categorias.get(item["categoria"], 0) + item["valor"]
+    if isinstance(item, dict):
+        tipo = item.get("tipo")
+        categoria = item.get("categoria")
+        valor = item.get("valor", 0)
+
+        if tipo == "despesa" and categoria:
+            categorias[categoria] = categorias.get(categoria, 0) + valor
 
 if categorias:
     fig, ax = plt.subplots()
@@ -281,28 +294,6 @@ if categorias:
     fig.savefig("grafico.png")
 else:
     st.info("Sem dados para gráfico")
-
-# =============================
-# PDF
-# =============================
-def gerar_pdf():
-    doc = SimpleDocTemplate("relatorio.pdf")
-    styles = getSampleStyleSheet()
-    elementos = []
-
-    elementos.append(Paragraph("Relatório Financeiro", styles['Title']))
-    elementos.append(Spacer(1, 12))
-    elementos.append(Paragraph(f"Saldo: R$ {dados['saldo']}", styles['Normal']))
-
-    if os.path.exists("grafico.png"):
-        elementos.append(Image("grafico.png", width=300, height=200))
-
-    doc.build(elementos)
-
-if st.button("📄 Gerar PDF"):
-    gerar_pdf()
-    with open("relatorio.pdf", "rb") as f:
-        st.download_button("Baixar PDF", f, file_name="relatorio.pdf")
 
 # =============================
 # HISTÓRICO
