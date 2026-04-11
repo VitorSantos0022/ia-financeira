@@ -1,5 +1,5 @@
 # =============================
-# IA FINANCEIRA WEB APP (NÍVEL PROFISSIONAL)
+# IA FINANCEIRA WEB APP
 # =============================
 
 import streamlit as st
@@ -53,9 +53,8 @@ def tela_login():
                 st.stop()
             else:
                 st.error("Erro no login")
-
-        except:
-            st.error("Erro no login")
+        except Exception as e:
+            st.error(e)
 
     if col2.button("Cadastrar"):
         try:
@@ -67,8 +66,8 @@ def tela_login():
                 }
             })
             st.success("Conta criada! Verifique seu e-mail.")
-        except:
-            st.error("Erro ao cadastrar")
+        except Exception as e:
+            st.error(e)
 
 if not st.session_state.user:
     tela_login()
@@ -84,33 +83,58 @@ def get_user_id():
 # DADOS
 # =============================
 def carregar_dados():
-    res = supabase.table("usuarios").select("*").eq("user_id", get_user_id()).execute()
+    user_id = get_user_id()
 
+    res = supabase.table("usuarios") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .execute()
+
+    # 🔥 SE NÃO EXISTE → CRIA
     if not res.data:
-        dados = {
-            "user_id": get_user_id(),
+        dados_insert = {
+            "user_id": user_id,
+            "saldo": 0,
+            "historico": json.dumps([]),
+            "metas": json.dumps([]),
+            "aprendizado": json.dumps({})
+        }
+
+        try:
+            supabase.table("usuarios").insert(dados_insert).execute()
+        except Exception as e:
+            st.error(f"Erro ao inserir: {e}")
+
+        return {
+            "user_id": user_id,
             "saldo": 0,
             "historico": [],
             "metas": [],
             "aprendizado": {}
         }
-        supabase.table("usuarios").insert(dados).execute()
-        return dados
 
+    # 🔥 SE EXISTE
     dados = res.data[0]
 
-    # segurança contra null
-    if dados.get("historico") is None:
-        dados["historico"] = []
-    if dados.get("metas") is None:
-        dados["metas"] = []
-    if dados.get("aprendizado") is None:
-        dados["aprendizado"] = {}
+    # 🔥 CONVERTE JSON
+    dados["historico"] = json.loads(dados["historico"]) if isinstance(dados["historico"], str) else dados["historico"]
+    dados["metas"] = json.loads(dados["metas"]) if isinstance(dados["metas"], str) else dados["metas"]
+    dados["aprendizado"] = json.loads(dados["aprendizado"]) if isinstance(dados["aprendizado"], str) else dados["aprendizado"]
 
     return dados
 
 def salvar_dados(dados):
-    supabase.table("usuarios").update(dados).eq("user_id", get_user_id()).execute()
+    dados_update = {
+        "saldo": dados["saldo"],
+        "historico": json.dumps(dados["historico"]),
+        "metas": json.dumps(dados["metas"]),
+        "aprendizado": json.dumps(dados["aprendizado"])
+    }
+
+    supabase.table("usuarios") \
+        .update(dados_update) \
+        .eq("user_id", get_user_id()) \
+        .execute()
 
 dados = carregar_dados()
 
@@ -219,10 +243,27 @@ with st.form("form_entrada"):
     st.form_submit_button("Registrar", on_click=processar_entrada)
 
 # =============================
-# RESTANTE (mantido igual)
+# RESET
+# =============================
+st.subheader("⚠️ Zona de Perigo")
+
+if st.button("🧹 Limpar Tudo"):
+    dados["saldo"] = 0
+    dados["historico"] = []
+    dados["metas"] = []
+    dados["aprendizado"] = {}
+    salvar_dados(dados)
+    st.success("Dados zerados!")
+    st.rerun()
+
+# =============================
+# SALDO
 # =============================
 st.subheader("💵 Saldo Atual")
 st.metric("Saldo", f"R$ {dados['saldo']}")
 
+# =============================
+# HISTÓRICO
+# =============================
 st.subheader("📜 Histórico")
 st.write(dados["historico"])
