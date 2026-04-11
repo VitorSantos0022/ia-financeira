@@ -1,5 +1,5 @@
 # =============================
-# IA FINANCEIRA WEB APP
+# IA FINANCEIRA WEB APP (COMPLETO)
 # =============================
 
 import streamlit as st
@@ -50,11 +50,12 @@ def tela_login():
             if res and res.user:
                 st.session_state.user = res.user
                 st.success("Login realizado!")
-                st.stop()
+                st.rerun()
             else:
                 st.error("Erro no login")
-        except Exception as e:
-            st.error(e)
+
+        except:
+            st.error("Erro no login")
 
     if col2.button("Cadastrar"):
         try:
@@ -66,8 +67,8 @@ def tela_login():
                 }
             })
             st.success("Conta criada! Verifique seu e-mail.")
-        except Exception as e:
-            st.error(e)
+        except:
+            st.error("Erro ao cadastrar")
 
 if not st.session_state.user:
     tela_login()
@@ -83,63 +84,40 @@ def get_user_id():
 # DADOS
 # =============================
 def carregar_dados():
-    user_id = get_user_id()
+    res = supabase.table("usuarios").select("*").eq("user_id", get_user_id()).execute()
 
-    res = supabase.table("usuarios") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .execute()
-
-    # 🔥 SE NÃO EXISTE → CRIA
     if not res.data:
-        dados_insert = {
-            "user_id": user_id,
-            "saldo": 0,
-            "historico": json.dumps([]),
-            "metas": json.dumps([]),
-            "aprendizado": json.dumps({})
-        }
-
-        try:
-            supabase.table("usuarios").insert(dados_insert).execute()
-        except Exception as e:
-            st.error(f"Erro ao inserir: {e}")
-
-        return {
-            "user_id": user_id,
+        dados = {
+            "user_id": get_user_id(),
             "saldo": 0,
             "historico": [],
             "metas": [],
             "aprendizado": {}
         }
+        try:
+            supabase.table("usuarios").insert(dados).execute()
+        except Exception as e:
+            st.error(f"Erro ao inserir: {e}")
+        return dados
 
-    # 🔥 SE EXISTE
     dados = res.data[0]
 
-    # 🔥 CONVERTE JSON
-    dados["historico"] = json.loads(dados["historico"]) if isinstance(dados["historico"], str) else dados["historico"]
-    dados["metas"] = json.loads(dados["metas"]) if isinstance(dados["metas"], str) else dados["metas"]
-    dados["aprendizado"] = json.loads(dados["aprendizado"]) if isinstance(dados["aprendizado"], str) else dados["aprendizado"]
+    if dados.get("historico") is None:
+        dados["historico"] = []
+    if dados.get("metas") is None:
+        dados["metas"] = []
+    if dados.get("aprendizado") is None:
+        dados["aprendizado"] = {}
 
     return dados
 
 def salvar_dados(dados):
-    dados_update = {
-        "saldo": dados["saldo"],
-        "historico": json.dumps(dados["historico"]),
-        "metas": json.dumps(dados["metas"]),
-        "aprendizado": json.dumps(dados["aprendizado"])
-    }
-
-    supabase.table("usuarios") \
-        .update(dados_update) \
-        .eq("user_id", get_user_id()) \
-        .execute()
+    supabase.table("usuarios").update(dados).eq("user_id", get_user_id()).execute()
 
 dados = carregar_dados()
 
 # =============================
-# UI STYLE
+# STYLE
 # =============================
 st.markdown("""
 <style>
@@ -149,7 +127,7 @@ body {background-color: #0e1117; color: white;}
 """, unsafe_allow_html=True)
 
 # =============================
-# MODELO
+# MODELO IA
 # =============================
 def treinar_modelo():
     frases = ["gastei com lanche","comprei comida","paguei uber","ganhei salario","recebi dinheiro"]
@@ -243,7 +221,30 @@ with st.form("form_entrada"):
     st.form_submit_button("Registrar", on_click=processar_entrada)
 
 # =============================
-# RESET
+# ENSINAR IA
+# =============================
+st.subheader("🧠 Ensinar IA")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    texto_ensinar = st.text_input("Frase para ensinar", key="ensinar_texto")
+
+with col2:
+    categoria_ensinar = st.selectbox(
+        "Categoria",
+        ["alimentacao", "transporte", "receita", "outros"],
+        key="ensinar_categoria"
+    )
+
+if st.button("Ensinar IA"):
+    if texto_ensinar and categoria_ensinar:
+        dados["aprendizado"][texto_ensinar.lower()] = categoria_ensinar
+        salvar_dados(dados)
+        st.success("IA aprendeu!")
+
+# =============================
+# LIMPAR
 # =============================
 st.subheader("⚠️ Zona de Perigo")
 
@@ -261,6 +262,47 @@ if st.button("🧹 Limpar Tudo"):
 # =============================
 st.subheader("💵 Saldo Atual")
 st.metric("Saldo", f"R$ {dados['saldo']}")
+
+# =============================
+# GRÁFICO
+# =============================
+st.subheader("📊 Gastos por Categoria")
+
+categorias = {}
+
+for item in dados["historico"]:
+    if item["tipo"] == "despesa":
+        categorias[item["categoria"]] = categorias.get(item["categoria"], 0) + item["valor"]
+
+if categorias:
+    fig, ax = plt.subplots()
+    ax.pie(categorias.values(), labels=categorias.keys(), autopct='%1.1f%%')
+    st.pyplot(fig)
+    fig.savefig("grafico.png")
+else:
+    st.info("Sem dados para gráfico")
+
+# =============================
+# PDF
+# =============================
+def gerar_pdf():
+    doc = SimpleDocTemplate("relatorio.pdf")
+    styles = getSampleStyleSheet()
+    elementos = []
+
+    elementos.append(Paragraph("Relatório Financeiro", styles['Title']))
+    elementos.append(Spacer(1, 12))
+    elementos.append(Paragraph(f"Saldo: R$ {dados['saldo']}", styles['Normal']))
+
+    if os.path.exists("grafico.png"):
+        elementos.append(Image("grafico.png", width=300, height=200))
+
+    doc.build(elementos)
+
+if st.button("📄 Gerar PDF"):
+    gerar_pdf()
+    with open("relatorio.pdf", "rb") as f:
+        st.download_button("Baixar PDF", f, file_name="relatorio.pdf")
 
 # =============================
 # HISTÓRICO
