@@ -1,5 +1,5 @@
 # =============================
-# IA FINANCEIRA WEB APP (NÍVEL PROFISSIONAL)
+# IA FINANCEIRA - DASHBOARD PRO
 # =============================
 
 import streamlit as st
@@ -8,19 +8,22 @@ import re
 import pickle
 import os
 from datetime import datetime
+from collections import defaultdict
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 import matplotlib.pyplot as plt
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from io import BytesIO
+
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
-st.set_page_config(page_title="IA Financeira", layout="wide")
+from supabase import create_client, Client
+
+st.set_page_config(page_title="IA Financeira PRO", layout="wide")
 
 # =============================
 # SUPABASE
 # =============================
-from supabase import create_client, Client
-
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
@@ -41,34 +44,23 @@ def tela_login():
     col1, col2 = st.columns(2)
 
     if col1.button("Entrar"):
-        try:
-            res = supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": senha
-            })
+        res = supabase.auth.sign_in_with_password({
+            "email": email,
+            "password": senha
+        })
 
-            if res and res.user:
-                st.session_state.user = res.user
-                st.success("Login realizado!")
-                st.rerun()  # ✅ CORREÇÃO
-            else:
-                st.error("E-mail ou senha inválidos")
-
-        except:
-            st.error("Erro no login")
+        if res and res.user:
+            st.session_state.user = res.user
+            st.rerun()
+        else:
+            st.error("Login inválido")
 
     if col2.button("Cadastrar"):
-        try:
-            supabase.auth.sign_up({
-                "email": email,
-                "password": senha,
-                "options": {
-                    "email_redirect_to": "https://ia-financeira-hcpjnmqrierowuvyu9upy3.streamlit.app/"
-                }
-            })
-            st.success("Conta criada! Verifique seu e-mail.")
-        except:
-            st.error("Erro ao cadastrar")
+        supabase.auth.sign_up({
+            "email": email,
+            "password": senha
+        })
+        st.success("Conta criada!")
 
 if not st.session_state.user:
     tela_login()
@@ -89,25 +81,20 @@ def carregar_dados():
     if not res.data:
         dados = {
             "user_id": get_user_id(),
-            "saldo": 0,
+            "saldo": 0.0,
             "historico": [],
             "metas": [],
             "aprendizado": {}
         }
-        try:
-            supabase.table("usuarios").insert(dados).execute()
-        except Exception as e:
-            st.error(f"Erro ao inserir: {e}")
+        supabase.table("usuarios").insert(dados).execute()
         return dados
 
     dados = res.data[0]
 
-    if dados.get("historico") is None:
-        dados["historico"] = []
-    if dados.get("metas") is None:
-        dados["metas"] = []
-    if dados.get("aprendizado") is None:
-        dados["aprendizado"] = {}
+    dados["saldo"] = float(dados.get("saldo") or 0)
+    dados["historico"] = dados.get("historico") or []
+    dados["metas"] = dados.get("metas") or []
+    dados["aprendizado"] = dados.get("aprendizado") or {}
 
     return dados
 
@@ -117,186 +104,167 @@ def salvar_dados(dados):
 dados = carregar_dados()
 
 # =============================
-# 🔥 LIMPEZA DE DADOS (CORREÇÃO)
-# =============================
-if isinstance(dados.get("historico"), list):
-    dados["historico"] = [i for i in dados["historico"] if isinstance(i, dict)]
-else:
-    dados["historico"] = []
-
-# =============================
-# STYLE
-# =============================
-st.markdown("""
-<style>
-body {background-color: #0e1117; color: white;}
-.stButton>button {background-color: #00c853; color: white; border-radius: 10px;}
-</style>
-""", unsafe_allow_html=True)
-
-# =============================
 # MODELO IA
 # =============================
-def treinar_modelo():
-    frases = ["gastei com lanche","comprei comida","paguei uber","ganhei salario","recebi dinheiro"]
-    categorias = ["alimentacao","alimentacao","transporte","receita","receita"]
-
-    vectorizer = CountVectorizer()
-    X = vectorizer.fit_transform(frases)
-
-    modelo = MultinomialNB()
-    modelo.fit(X, categorias)
-
-    with open("modelo.pkl", "wb") as f:
-        pickle.dump((modelo, vectorizer), f)
-
-def carregar_modelo():
-    try:
-        with open("modelo.pkl", "rb") as f:
-            return pickle.load(f)
-    except:
-        treinar_modelo()
-        return carregar_modelo()
-
-modelo, vectorizer = carregar_modelo()
-
-# =============================
-# SIDEBAR
-# =============================
-if st.sidebar.button("Sair"):
-    st.session_state.user = None
-    st.rerun()
-
-# =============================
-# IA
-# =============================
 def prever_categoria(texto):
-    if "lanche" in texto or "comida" in texto:
-        return "alimentacao"
+    texto = texto.lower()
+
     if "uber" in texto:
         return "transporte"
-    if "ganhei" in texto or "recebi" in texto:
+    if "comida" in texto or "lanche" in texto:
+        return "alimentacao"
+    if "recebi" in texto or "ganhei" in texto:
         return "receita"
 
-    if texto in dados["aprendizado"]:
-        return dados["aprendizado"][texto]
-
-    return modelo.predict(vectorizer.transform([texto]))[0]
+    return dados["aprendizado"].get(texto, "outros")
 
 def extrair_valor(texto):
     numeros = re.findall(r"\d+(?:\.\d+)?", texto)
-    return float(numeros[0]) if numeros else 0
+    return float(numeros[0]) if numeros else 0.0
 
 # =============================
-# APP
+# PROCESSAMENTO
 # =============================
-st.title("💰 IA Financeira Inteligente")
-
-if "entrada" not in st.session_state:
-    st.session_state.entrada = ""
-
 def processar_entrada():
     texto = st.session_state.entrada.lower()
     valor = extrair_valor(texto)
     categoria = prever_categoria(texto)
 
+    mes = datetime.now().strftime("%Y-%m")
+    ano = datetime.now().strftime("%Y")
+
     if "gastei" in texto or "paguei" in texto:
         dados["saldo"] -= valor
+
         dados["historico"].append({
             "texto": texto,
             "valor": valor,
             "categoria": categoria,
             "tipo": "despesa",
-            "data": datetime.now().strftime("%Y-%m")
+            "mes": mes,
+            "ano": ano
         })
 
     elif "ganhei" in texto or "recebi" in texto:
         dados["saldo"] += valor
+
         dados["historico"].append({
             "texto": texto,
             "valor": valor,
             "categoria": categoria,
             "tipo": "receita",
-            "data": datetime.now().strftime("%Y-%m")
+            "mes": mes,
+            "ano": ano
         })
 
-    salvar_dados(dados)
-    st.success("Registro salvo!")
-    st.session_state.entrada = ""
+    # Atualiza metas automaticamente
+    for meta in dados["metas"]:
+        if "valor_atual" not in meta:
+            meta["valor_atual"] = 0
 
-with st.form("form_entrada"):
+        if categoria == "receita":
+            meta["valor_atual"] += valor
+
+    salvar_dados(dados)
+    st.success("Registrado!")
+
+# =============================
+# APP
+# =============================
+st.title("💰 IA Financeira PRO Dashboard")
+
+with st.form("form"):
     st.text_input("Digite (ex: gastei 50 com lanche)", key="entrada")
     st.form_submit_button("Registrar", on_click=processar_entrada)
 
 # =============================
-# ENSINAR IA
+# METAS FINANCEIRAS
 # =============================
-st.subheader("🧠 Ensinar IA")
+st.subheader("🎯 Metas Financeiras")
 
-col1, col2 = st.columns(2)
+nome_meta = st.text_input("Nome da meta")
+valor_meta = st.number_input("Valor da meta", min_value=0.0)
 
-with col1:
-    texto_ensinar = st.text_input("Frase para ensinar", key="ensinar_texto")
-
-with col2:
-    categoria_ensinar = st.selectbox(
-        "Categoria",
-        ["alimentacao", "transporte", "receita", "outros"],
-        key="ensinar_categoria"
-    )
-
-if st.button("Ensinar IA"):
-    if texto_ensinar and categoria_ensinar:
-        dados["aprendizado"][texto_ensinar.lower()] = categoria_ensinar
-        salvar_dados(dados)
-        st.success("IA aprendeu!")
-
-# =============================
-# LIMPAR
-# =============================
-st.subheader("⚠️ Zona de Perigo")
-
-if st.button("🧹 Limpar Tudo"):
-    dados["saldo"] = 0
-    dados["historico"] = []
-    dados["metas"] = []
-    dados["aprendizado"] = {}
+if st.button("Criar Meta"):
+    dados["metas"].append({
+        "nome": nome_meta,
+        "valor": valor_meta,
+        "valor_atual": 0
+    })
     salvar_dados(dados)
-    st.success("Dados zerados!")
-    st.rerun()
+    st.success("Meta criada!")
+
+for meta in dados["metas"]:
+    progresso = meta.get("valor_atual", 0) / meta["valor"] if meta["valor"] > 0 else 0
+
+    st.write(f"📌 {meta['nome']}")
+    st.progress(min(progresso, 1.0))
+    st.write(f"{meta.get('valor_atual',0)} / {meta['valor']}")
 
 # =============================
-# SALDO
+# DASHBOARD
 # =============================
-st.subheader("💵 Saldo Atual")
-st.metric("Saldo", f"R$ {dados['saldo']}")
+st.subheader("📊 Dashboard")
 
-# =============================
-# GRÁFICO (CORRIGIDO)
-# =============================
-st.subheader("📊 Gastos por Categoria")
+despesas = defaultdict(float)
+receitas = defaultdict(float)
 
-categorias = {}
+for i in dados["historico"]:
+    if i["tipo"] == "despesa":
+        despesas[i["mes"]] += i["valor"]
+    else:
+        receitas[i["mes"]] += i["valor"]
 
-for item in dados["historico"]:
-    if isinstance(item, dict):
-        tipo = item.get("tipo")
-        categoria = item.get("categoria")
-        valor = item.get("valor", 0)
+meses = sorted(set(list(despesas.keys()) + list(receitas.keys())))
 
-        if tipo == "despesa" and categoria:
-            categorias[categoria] = categorias.get(categoria, 0) + valor
-
-if categorias:
-    fig, ax = plt.subplots()
-    ax.pie(categorias.values(), labels=categorias.keys(), autopct='%1.1f%%')
-    st.pyplot(fig)
-    fig.savefig("grafico.png")
-else:
-    st.info("Sem dados para gráfico")
+fig, ax = plt.subplots()
+ax.plot(meses, [receitas[m] for m in meses], label="Receitas")
+ax.plot(meses, [despesas[m] for m in meses], label="Despesas")
+ax.legend()
+st.pyplot(fig)
 
 # =============================
 # HISTÓRICO
 # =============================
 st.subheader("📜 Histórico")
-st.write(dados["historico"])
+
+filtro_mes = st.selectbox("Filtrar por mês", ["Todos"] + sorted(set(i["mes"] for i in dados["historico"])))
+
+for i in dados["historico"]:
+    if filtro_mes == "Todos" or i["mes"] == filtro_mes:
+        st.write(i)
+
+# =============================
+# PDF EXPORT
+# =============================
+def gerar_pdf():
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    styles = getSampleStyleSheet()
+
+    story = []
+
+    story.append(Paragraph("Relatório Financeiro", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph(f"Saldo: R$ {dados['saldo']}", styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Histórico:", styles["Heading2"]))
+
+    for i in dados["historico"]:
+        story.append(Paragraph(str(i), styles["Normal"]))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+st.subheader("📄 Exportar PDF")
+
+pdf = gerar_pdf()
+st.download_button(
+    "Baixar Relatório PDF",
+    data=pdf,
+    file_name="relatorio_financeiro.pdf",
+    mime="application/pdf"
+)
