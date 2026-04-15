@@ -72,6 +72,15 @@ if not st.session_state.user:
     st.stop()
 
 # =============================
+# 🔐 LOGOUT (ADICIONADO CORRETAMENTE)
+# =============================
+st.sidebar.markdown("## 🔐 Sessão")
+
+if st.sidebar.button("🚪 Sair"):
+    st.session_state.user = None
+    st.rerun()
+
+# =============================
 # USER
 # =============================
 def get_user_id():
@@ -101,7 +110,7 @@ def carregar_dados():
     dados["historico"] = dados.get("historico") or []
     dados["aprendizado"] = dados.get("aprendizado") or {}
 
-    # 🔥 CORREÇÃO DE METAS (EVITA ERROS)
+    # 🔥 CORREÇÃO DE METAS
     metas_limpa = []
     for m in (dados.get("metas") or []):
         if isinstance(m, dict):
@@ -113,7 +122,7 @@ def carregar_dados():
 
     dados["metas"] = metas_limpa
 
-    # limpar histórico inválido
+    # 🔥 limpar histórico inválido
     dados["historico"] = [i for i in dados["historico"] if isinstance(i, dict)]
 
     return dados
@@ -174,14 +183,12 @@ def processar_entrada():
         "ano": ano
     })
 
-    # metas automáticas
     for meta in dados["metas"]:
         if tipo == "receita":
-            meta["valor_atual"] = meta.get("valor_atual", 0) + valor
+            meta["valor_atual"] += valor
 
     salvar_dados(dados)
     st.success("Registro salvo!")
-
 
 # =============================
 # UI
@@ -220,7 +227,7 @@ for meta in dados["metas"]:
     st.write(f"{valor_atual} / {valor_meta}")
 
 # =============================
-# DASHBOARD
+# DASHBOARD (CORRIGIDO)
 # =============================
 st.subheader("📊 Dashboard")
 
@@ -228,27 +235,44 @@ despesas = defaultdict(float)
 receitas = defaultdict(float)
 
 for i in dados["historico"]:
-    mes = i.get("mes")
-    if i["tipo"] == "despesa":
-        despesas[mes] += i["valor"]
-    elif i["tipo"] == "receita":
-        receitas[mes] += i["valor"]
+    if not isinstance(i, dict):
+        continue
 
-meses = sorted(set(list(despesas.keys()) + list(receitas.keys())))
+    mes = i.get("mes")
+
+    if not mes or not isinstance(mes, str):
+        continue
+
+    valor = float(i.get("valor", 0))
+
+    if i.get("tipo") == "despesa":
+        despesas[mes] += valor
+    elif i.get("tipo") == "receita":
+        receitas[mes] += valor
+
+meses = sorted(
+    set(list(despesas.keys()) + list(receitas.keys())),
+    key=lambda x: str(x)
+)
 
 if meses:
     fig, ax = plt.subplots()
-    ax.plot(meses, [receitas[m] for m in meses], label="Receitas")
-    ax.plot(meses, [despesas[m] for m in meses], label="Despesas")
+    ax.plot(meses, [receitas.get(m, 0) for m in meses], label="Receitas")
+    ax.plot(meses, [despesas.get(m, 0) for m in meses], label="Despesas")
     ax.legend()
     st.pyplot(fig)
+else:
+    st.info("Sem dados para exibir")
 
 # =============================
 # HISTÓRICO
 # =============================
 st.subheader("📜 Histórico")
 
-filtro = st.selectbox("Filtrar mês", ["Todos"] + sorted(set(i["mes"] for i in dados["historico"] if "mes" in i)))
+filtro = st.selectbox(
+    "Filtrar mês",
+    ["Todos"] + sorted(set(i.get("mes") for i in dados["historico"] if i.get("mes")))
+)
 
 for i in dados["historico"]:
     if filtro == "Todos" or i.get("mes") == filtro:
