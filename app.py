@@ -9,7 +9,8 @@ from collections import defaultdict
 from io import BytesIO
 import matplotlib.pyplot as plt
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 
 from supabase import create_client, Client
@@ -29,7 +30,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # =============================
 if "user" not in st.session_state:
     st.session_state.user = None
-
 
 def tela_login():
     st.title("🔐 Login")
@@ -66,13 +66,12 @@ def tela_login():
         except Exception as e:
             st.error(f"Erro ao cadastrar: {e}")
 
-
 if not st.session_state.user:
     tela_login()
     st.stop()
 
 # =============================
-# 🔐 LOGOUT (ADICIONADO CORRETAMENTE)
+# LOGOUT
 # =============================
 st.sidebar.markdown("## 🔐 Sessão")
 
@@ -87,7 +86,7 @@ def get_user_id():
     return str(st.session_state.user.id)
 
 # =============================
-# CARREGAR DADOS
+# DADOS
 # =============================
 def carregar_dados():
     res = supabase.table("usuarios").select("*").eq("user_id", get_user_id()).execute()
@@ -105,12 +104,10 @@ def carregar_dados():
 
     dados = res.data[0]
 
-    # 🔥 BLINDAGEM TOTAL
     dados["saldo"] = float(dados.get("saldo") or 0)
     dados["historico"] = dados.get("historico") or []
     dados["aprendizado"] = dados.get("aprendizado") or {}
 
-    # 🔥 CORREÇÃO DE METAS
     metas_limpa = []
     for m in (dados.get("metas") or []):
         if isinstance(m, dict):
@@ -121,21 +118,17 @@ def carregar_dados():
             })
 
     dados["metas"] = metas_limpa
-
-    # 🔥 limpar histórico inválido
     dados["historico"] = [i for i in dados["historico"] if isinstance(i, dict)]
 
     return dados
 
-
 def salvar_dados(dados):
     supabase.table("usuarios").update(dados).eq("user_id", get_user_id()).execute()
-
 
 dados = carregar_dados()
 
 # =============================
-# IA SIMPLES
+# IA
 # =============================
 def prever_categoria(texto):
     texto = texto.lower()
@@ -149,13 +142,12 @@ def prever_categoria(texto):
 
     return dados["aprendizado"].get(texto, "outros")
 
-
 def extrair_valor(texto):
     numeros = re.findall(r"\d+(?:\.\d+)?", texto)
     return float(numeros[0]) if numeros else 0.0
 
 # =============================
-# PROCESSAR ENTRADA
+# PROCESSAR
 # =============================
 def processar_entrada():
     texto = st.session_state.entrada.lower()
@@ -188,6 +180,7 @@ def processar_entrada():
             meta["valor_atual"] += valor
 
     salvar_dados(dados)
+    st.session_state.entrada = ""  # 🔥 limpa campo
     st.success("Registro salvo!")
 
 # =============================
@@ -200,89 +193,25 @@ with st.form("form"):
     st.form_submit_button("Registrar", on_click=processar_entrada)
 
 # =============================
-# METAS
-# =============================
-st.subheader("🎯 Metas Financeiras")
-
-nome = st.text_input("Nome da meta")
-valor_meta = st.number_input("Valor da meta", min_value=0.0)
-
-if st.button("Criar Meta"):
-    dados["metas"].append({
-        "nome": nome,
-        "valor": float(valor_meta),
-        "valor_atual": 0.0
-    })
-    salvar_dados(dados)
-    st.success("Meta criada!")
-
-for meta in dados["metas"]:
-    valor_meta = float(meta.get("valor") or 0)
-    valor_atual = float(meta.get("valor_atual") or 0)
-
-    progresso = (valor_atual / valor_meta) if valor_meta > 0 else 0
-
-    st.write(f"📌 {meta['nome']}")
-    st.progress(min(progresso, 1.0))
-    st.write(f"{valor_atual} / {valor_meta}")
-
-# =============================
-# DASHBOARD (CORRIGIDO)
+# DASHBOARD
 # =============================
 st.subheader("📊 Dashboard")
 
 despesas = defaultdict(float)
-receitas = defaultdict(float)
 
 for i in dados["historico"]:
-    if not isinstance(i, dict):
-        continue
-
-    mes = i.get("mes")
-
-    if not mes or not isinstance(mes, str):
-        continue
-
-    valor = float(i.get("valor", 0))
-
     if i.get("tipo") == "despesa":
-        despesas[mes] += valor
-    elif i.get("tipo") == "receita":
-        receitas[mes] += valor
+        despesas[i.get("categoria")] += i.get("valor", 0)
 
-meses = sorted(
-    set(list(despesas.keys()) + list(receitas.keys())),
-    key=lambda x: str(x)
-)
-
-if meses:
+if despesas:
     fig, ax = plt.subplots()
-    ax.plot(meses, [receitas.get(m, 0) for m in meses], label="Receitas")
-    ax.plot(meses, [despesas.get(m, 0) for m in meses], label="Despesas")
-    ax.legend()
+    ax.pie(despesas.values(), labels=despesas.keys(), autopct='%1.1f%%')
     st.pyplot(fig)
-else:
-    st.info("Sem dados para exibir")
 
 # =============================
-# HISTÓRICO
-# =============================
-st.subheader("📜 Histórico")
-
-filtro = st.selectbox(
-    "Filtrar mês",
-    ["Todos"] + sorted(set(i.get("mes") for i in dados["historico"] if i.get("mes")))
-)
-
-for i in dados["historico"]:
-    if filtro == "Todos" or i.get("mes") == filtro:
-        st.write(i)
-
-# =============================
-# PDF
+# PDF PROFISSIONAL
 # =============================
 st.subheader("📄 Exportar PDF")
-
 
 def gerar_pdf():
     buffer = BytesIO()
@@ -296,15 +225,61 @@ def gerar_pdf():
     story.append(Paragraph(f"Saldo: R$ {dados['saldo']:.2f}", styles["Normal"]))
     story.append(Spacer(1, 12))
 
-    story.append(Paragraph("Histórico:", styles["Heading2"]))
+    # =============================
+    # TABELA
+    # =============================
+    tabela = [["Data", "Tipo", "Categoria", "Valor", "Descrição"]]
+
+    totais = defaultdict(float)
 
     for i in dados["historico"]:
-        story.append(Paragraph(str(i), styles["Normal"]))
+        data = i.get("mes")
+        tipo = i.get("tipo")
+        categoria = i.get("categoria")
+        valor = float(i.get("valor", 0))
+        texto = i.get("texto")
+
+        tabela.append([data, tipo, categoria, f"R$ {valor:.2f}", texto])
+
+        if tipo == "despesa":
+            totais[categoria] += valor
+
+    t = Table(tabela)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+
+    story.append(t)
+    story.append(Spacer(1, 20))
+
+    # =============================
+    # TOTAIS
+    # =============================
+    story.append(Paragraph("Totais por Categoria:", styles["Heading2"]))
+
+    for cat, val in totais.items():
+        story.append(Paragraph(f"{cat}: R$ {val:.2f}", styles["Normal"]))
+
+    story.append(Spacer(1, 20))
+
+    # =============================
+    # GRÁFICO
+    # =============================
+    if totais:
+        fig, ax = plt.subplots()
+        ax.pie(totais.values(), labels=totais.keys(), autopct='%1.1f%%')
+
+        img_buffer = BytesIO()
+        fig.savefig(img_buffer, format='png')
+        img_buffer.seek(0)
+
+        story.append(Image(img_buffer, width=400, height=300))
 
     doc.build(story)
     buffer.seek(0)
     return buffer
-
 
 if st.button("📄 Gerar PDF"):
     pdf = gerar_pdf()
