@@ -1,5 +1,5 @@
 # =============================
-# IA FINANCEIRA PRO - COMPLETO RESTAURADO
+# IA FINANCEIRA PRO - COMPLETO FINAL
 # =============================
 
 import streamlit as st
@@ -138,7 +138,7 @@ def processar_entrada():
         "valor": valor,
         "categoria": categoria,
         "tipo": tipo,
-        "data": datetime.now().strftime("%Y-%m")
+        "mes": datetime.now().strftime("%Y-%m")
     })
 
     salvar_dados(dados)
@@ -157,13 +157,12 @@ st.button("Registrar", on_click=processar_entrada)
 # =============================
 st.subheader("🧠 Ensinar IA")
 
-texto = st.text_input("Frase")
+texto = st.text_input("Frase IA")
 categoria = st.selectbox("Categoria", ["alimentacao","transporte","receita","outros"])
 
-if st.button("Ensinar"):
+if st.button("Ensinar IA"):
     dados["aprendizado"][texto.lower()] = categoria
     salvar_dados(dados)
-    st.success("Aprendido!")
 
 # =============================
 # METAS
@@ -171,7 +170,7 @@ if st.button("Ensinar"):
 st.subheader("🎯 Metas")
 
 nome = st.text_input("Nome da meta")
-valor = st.number_input("Valor")
+valor = st.number_input("Valor meta")
 
 if st.button("Criar Meta"):
     dados["metas"].append({"nome": nome, "valor": valor, "valor_atual": 0})
@@ -183,44 +182,88 @@ for m in dados["metas"]:
     st.progress(progresso)
 
 # =============================
-# HISTÓRICO + EXCLUIR
+# HISTÓRICO
 # =============================
 st.subheader("📜 Histórico")
+
+if st.button("🧹 Limpar Histórico"):
+    dados["historico"] = []
+    salvar_dados(dados)
+    st.rerun()
 
 for i, item in enumerate(dados["historico"]):
     col1, col2 = st.columns([4,1])
     col1.write(item)
-
     if col2.button("❌", key=i):
         dados["historico"].pop(i)
         salvar_dados(dados)
         st.rerun()
 
 # =============================
-# PDF (FUNCIONANDO)
+# FILTRO PDF
+# =============================
+st.subheader("🔎 Filtro para PDF")
+
+meses_unicos = sorted(set(i.get("mes") for i in dados["historico"] if i.get("mes")))
+mes_inicio = st.selectbox("Mês inicial", meses_unicos)
+mes_fim = st.selectbox("Mês final", meses_unicos, index=len(meses_unicos)-1 if meses_unicos else 0)
+
+# =============================
+# PDF COMPLETO
 # =============================
 def gerar_pdf():
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer)
     styles = getSampleStyleSheet()
-
     story = []
-    story.append(Paragraph("Relatório Financeiro", styles["Title"]))
 
-    tabela = [["Data","Tipo","Categoria","Valor"]]
+    story.append(Paragraph("Extrato Financeiro", styles["Title"]))
+    story.append(Spacer(1, 12))
 
-    for i in dados["historico"]:
+    story.append(Paragraph(f"Saldo: R$ {dados['saldo']:.2f}", styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    tabela = [["Data","Tipo","Categoria","Valor","Descrição"]]
+
+    receitas = defaultdict(float)
+    despesas = defaultdict(float)
+
+    filtrado = [i for i in dados["historico"] if mes_inicio <= i.get("mes","") <= mes_fim]
+
+    for i in filtrado:
         tabela.append([
-            i.get("data"),
+            i.get("mes"),
             i.get("tipo"),
             i.get("categoria"),
-            f"R$ {i.get('valor')}"
+            f"R$ {i.get('valor')}",
+            i.get("texto")
         ])
+
+        if i.get("tipo") == "receita":
+            receitas[i["mes"]] += i["valor"]
+        else:
+            despesas[i["mes"]] += i["valor"]
 
     t = Table(tabela)
     t.setStyle(TableStyle([("GRID",(0,0),(-1,-1),1,colors.black)]))
-
     story.append(t)
+
+    # gráfico evolução
+    meses = sorted(set(list(receitas.keys()) + list(despesas.keys())))
+
+    if meses:
+        fig, ax = plt.subplots()
+        ax.plot(meses, [receitas.get(m,0) for m in meses], label="Receita")
+        ax.plot(meses, [despesas.get(m,0) for m in meses], label="Despesa")
+        ax.legend()
+
+        img = BytesIO()
+        fig.savefig(img, format='png')
+        img.seek(0)
+
+        story.append(Spacer(1,20))
+        story.append(Paragraph("Evolução Financeira", styles["Heading2"]))
+        story.append(Image(img, width=400, height=300))
 
     doc.build(story)
     buffer.seek(0)
@@ -228,5 +271,4 @@ def gerar_pdf():
 
 if st.button("📄 Gerar PDF"):
     pdf = gerar_pdf()
-
-    st.download_button("Baixar PDF", pdf, "relatorio.pdf")
+    st.download_button("⬇️ Baixar PDF", pdf, "relatorio.pdf")
